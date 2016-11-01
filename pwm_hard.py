@@ -140,7 +140,6 @@ def main():
     else:
         pwm.stop
 
-#if __name__ ==  '__main__':
-
-sys.exit(main())
+if __name__ ==  '__main__':
+    sys.exit(main())
 
