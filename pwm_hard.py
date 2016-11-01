@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import mmap
 import struct
+import optparse
 
+#prescale values from datasheet
 prescal_map={
     0b0000: 120,
     0b0001: 180,
@@ -51,13 +54,13 @@ class PWM(object):
         pin_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C20000)
         pin_mem.seek(0x800,0)
         data=(struct.unpack('I', pin_mem.read(4))[0])
-        data = data | (3 << 20)
-        data = data & ~(1 << 22)
+        data = data | (0b0011 << 20)
+        data = data & ~(0b0001 << 22)
         pin_mem.seek(0x800,0)
         pin_mem.write(struct.pack('I', data))        
 
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
-        data = 19<<4
+        data = 0b0011<<4
         data = data | self.prescal
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
@@ -70,7 +73,7 @@ class PWM(object):
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
         pwm_mem.seek(0x400,0)
         data=(struct.unpack('I', pwm_mem.read(4))[0])
-        data = data | 1<<6
+        data = data | 0b0001<<6
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
 
@@ -86,14 +89,58 @@ class PWM(object):
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
         pwm_mem.seek(0x400,0)
         data=(struct.unpack('I', pwm_mem.read(4))[0])
-        data = data & ~(1<<6)
+        data = data & ~(0b0001<<6)
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
 
 
 
+def main():
 
+    parser = optparse.OptionParser()
 
-test=PWM(2000)
-test.set_duty(30)
-test.run()
+    parser.add_option("-f", "--frequency", dest="freq", metavar="FREQUENCY",
+            type=int, help="frequency of PWM", default=1000)
+
+    parser.add_option("-d", "--duty", dest="duty", help="duty of PWM - percentage value",
+            nargs=1, type=int, metavar="DUTY", default=50)
+
+    parser.add_option("-r", "--run", action="store_true", dest="run",
+            help="start the PWM")
+
+    parser.add_option("-s", "--stop", action="store_true", dest="stop",
+            help="stop the PWM")
+
+    (options, args) = parser.parse_args()
+
+    if options.run is not None and options.stop is not None:
+        parser.print_help()
+        print "\nError: Both run and stop are specified"
+        return -1
+    elif options.run is None and options.stop is None:
+        parser.print_help()
+        print "\nError: Neither run or stop are specified"
+        return -1
+
+    if options.freq < 0:
+        parser.print_help()
+        print "\nError: Invalid frequency specified"
+        return -1
+
+    if not 0<=options.duty <=100:
+        parser.print_help()
+        print "\nError: Invalid duty specified\nexpected: 0<=duty <=100"
+        return -1
+
+    pwm=PWM(options.freq)
+
+    if options.run:
+        pwm.set_duty(options.duty)
+        pwm.run()
+    else:
+        pwm.stop
+
+#if __name__ ==  '__main__':
+
+sys.exit(main())
+
