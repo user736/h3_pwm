@@ -24,11 +24,11 @@ class PWM(object):
     def __init__(self, freq=1000):
         self.is_run=0
         self.calc_params( freq)
-        self.mem_config()
+        self.prescal_config()
 
     def reset_params(self, freq):
         self.calc_params( freq)
-        self.mem_config()
+        self.prescal_config()
         if self.is_run:
             self.run()
 
@@ -47,21 +47,12 @@ class PWM(object):
         if self.is_run:
             self.run()
                  
-    def mem_config(self):
+    def prescal_config(self):
 
         f = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
 
-        pin_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C20000)
-        pin_mem.seek(0x800,0)
-        data=(struct.unpack('I', pin_mem.read(4))[0])
-        data = data | (0b0011 << 20)
-        data = data & ~(0b0001 << 22)
-        pin_mem.seek(0x800,0)
-        pin_mem.write(struct.pack('I', data))        
-
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
-        data = 0b0011<<4
-        data = data | self.prescal
+        data = self.prescal
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
 
@@ -70,13 +61,24 @@ class PWM(object):
         self.is_run=1
         f = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
 
+        #config PA5 as PWM out
+        pin_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C20000)
+        pin_mem.seek(0x800,0)
+        data=(struct.unpack('I', pin_mem.read(4))[0])
+        data = data | (0b0011 << 20)
+        data = data & ~(0b0001 << 22)
+        pin_mem.seek(0x800,0)
+        pin_mem.write(struct.pack('I', data))
+
+        #enable PWM
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
         pwm_mem.seek(0x400,0)
         data=(struct.unpack('I', pwm_mem.read(4))[0])
-        data = data | 0b0001<<6
+        data = data | 0b0111<<4
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
 
+        #set PWM period
         pwm_mem.seek(0x404,0)
         cycle_data=self.interval_ticks<<16 | self.duty_ticks
         pwm_mem.write(struct.pack('I', cycle_data))
@@ -86,10 +88,26 @@ class PWM(object):
         self.is_run=0
         f = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
 
+        #config PA5 as GPIO out and set 0
+        pin_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C20000)
+        pin_mem.seek(0x800,0)
+        data=(struct.unpack('I', pin_mem.read(4))[0])
+        data = data | (0b0001 << 20)
+        data = data & ~(0b0011 << 21)
+        pin_mem.seek(0x800,0)
+        pin_mem.write(struct.pack('I', data))
+        #set 0 value
+        pin_mem.seek(0x810,0)
+        data=(struct.unpack('I', pin_mem.read(4))[0])
+        data = data & ~(0b0001 << 5)
+        pin_mem.seek(0x810,0)
+        pin_mem.write(struct.pack('I', data))
+
+        #disable PWM
         pwm_mem = mmap.mmap(f, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE, offset=0x01C21000)
         pwm_mem.seek(0x400,0)
         data=(struct.unpack('I', pwm_mem.read(4))[0])
-        data = data & ~(0b0001<<6)
+        data = data & ~(0b0111<<4)
         pwm_mem.seek(0x400,0)
         pwm_mem.write(struct.pack('I', data))
 
@@ -138,7 +156,7 @@ def main():
         pwm.set_duty(options.duty)
         pwm.run()
     else:
-        pwm.stop
+        pwm.stop()
 
 if __name__ ==  '__main__':
     sys.exit(main())
